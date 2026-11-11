@@ -36,15 +36,15 @@ function defaultState() {
     tri_over: E('Extension triceps overhead'),
     lombaires: E('Lombaires', 'reps'),
   };
-  // p(exercice, échauffement ?, en pause ?)
-  const p = (ex, warmup = false, paused = false) => ({ ex, sets: 2, warmup, paused });
+  // p(exercice, en pause ?)
+  const p = (ex, paused = false) => ({ ex, sets: 2, paused });
   const program = {
-    A1: [p('chaise'), p('chest', true), p('presse', true), p('incline'), p('militaire', true), p('lat'), p('marteau', true), p('crunch')],
-    P1: [p('row_neutre', true), p('legcurl', true), p('tirage_large'), p('tri_uni', true), p('facepull'), p('tri_over'), p('lombaires', false, true), p('releves')],
-    A2: [p('chaise'), p('incline', true), p('presse_uni', true), p('chest'), p('militaire', true), p('lat'), p('bayesian', true), p('releves')],
-    P2: [p('row_ecarte', true), p('legcurl', true), p('tirage_uni'), p('tri_uni', true), p('facepull'), p('tri_over'), p('lombaires', false, true), p('crunch')],
+    A1: [p('chaise'), p('chest'), p('presse'), p('incline'), p('militaire'), p('lat'), p('marteau'), p('crunch')],
+    P1: [p('row_neutre'), p('legcurl'), p('tirage_large'), p('tri_uni'), p('facepull'), p('tri_over'), p('lombaires', true), p('releves')],
+    A2: [p('chaise'), p('incline'), p('presse_uni'), p('chest'), p('militaire'), p('lat'), p('bayesian'), p('releves')],
+    P2: [p('row_ecarte'), p('legcurl'), p('tirage_uni'), p('tri_uni'), p('facepull'), p('tri_over'), p('lombaires', true), p('crunch')],
   };
-  return { version: 1, exercises, program, nextIndex: 0, sessions: [], current: null, lastBackup: null };
+  return { version: 2, exercises, program, nextIndex: 0, sessions: [], current: null, lastBackup: null };
 }
 
 /* ---------- État ---------- */
@@ -55,9 +55,17 @@ const ui = { tab: 'seance', progKey: 'A1', cal: [now.getFullYear(), now.getMonth
 function load() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) { const s = JSON.parse(raw); if (validState(s)) return s; }
+    if (raw) { const s = JSON.parse(raw); if (validState(s)) return migrate(s); }
   } catch (e) { /* données illisibles : on repart des valeurs par défaut */ }
   return defaultState();
+}
+function migrate(s) {
+  if ((s.version || 1) < 2) { // v2 : plus de série d'échauffement
+    CYCLE.forEach(k => s.program[k].forEach(e => { delete e.warmup; }));
+    if (s.current) s.current.items.forEach(it => { it.sets = it.sets.filter(x => !x.w || x.done); });
+    s.version = 2;
+  }
+  return s;
 }
 function validState(s) {
   return s && typeof s === 'object' && s.exercises && s.program && Array.isArray(s.sessions) && CYCLE.every(k => Array.isArray(s.program[k]));
@@ -238,6 +246,7 @@ function cardHTML(i) {
   return `<div class="card ex ${allDone ? 'alldone' : ''}" id="card-${i}">
     <div class="row"><h3 class="grow">${esc(ex.name)}${ex.uni ? '<span class="tag">par côté</span>' : ''}</h3>
       <button class="iconbtn" data-action="itemMenu" data-i="${i}" aria-label="Options" style="background:var(--card2)"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></div>
+    ${ex.note ? `<button class="note" data-action="itemNote" data-i="${i}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span>${esc(ex.note)}</span></button>` : ''}
     <div class="last">${lastTxt}</div>${rows}</div>`;
 }
 function refreshCard(i) {
@@ -249,7 +258,6 @@ function refreshCard(i) {
 }
 function buildSets(entry) {
   const sets = [];
-  if (entry.warmup) sets.push({ w: true, done: false });
   for (let k = 0; k < entry.sets; k++) sets.push({ w: false, done: false });
   return sets;
 }
@@ -365,7 +373,7 @@ function viewProgram() {
     const ex = exOf(e.ex);
     return `<div class="li ${e.paused ? 'paused' : ''}" style="padding:10px 10px 10px 14px">
       <button class="grow" data-action="entry" data-idx="${idx}" style="text-align:left"><div class="t">${esc(ex.name)}</div>
-        <div class="small mut">${e.paused ? 'En pause' : `${e.sets} série${e.sets > 1 ? 's' : ''}${e.warmup ? ' + échauffement' : ''}${ex.uni ? ' · par côté' : ''}`}</div></button>
+        <div class="small mut">${e.paused ? 'En pause' : `${e.sets} série${e.sets > 1 ? 's' : ''}${ex.uni ? ' · par côté' : ''}`}</div></button>
       <div class="mv"><button data-action="move" data-idx="${idx}" data-d="-1" ${idx === 0 ? 'disabled' : ''} aria-label="Monter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></button>
         <button data-action="move" data-idx="${idx}" data-d="1" ${idx === list.length - 1 ? 'disabled' : ''} aria-label="Descendre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></div></div>`;
   }).join('');
@@ -377,12 +385,11 @@ function entrySheet() {
   const { key, idx } = ui.entry, e = state.program[key][idx];
   if (!e) return closeSheet();
   const ex = exOf(e.ex);
-  openSheet(`<h2>${esc(ex.name)}</h2><div class="small mut">${SESS[key].name} · ${TYPES[ex.type]}${ex.uni ? ' · par côté' : ''}</div>
+  openSheet(`<h2>${esc(ex.name)}</h2><div class="small mut">${SESS[key].name} · ${TYPES[ex.type]}${ex.uni ? ' · par côté' : ''}${ex.note ? ' · ' + esc(ex.note) : ''}</div>
     <div class="field"><span>Séries de travail</span><div class="stepper"><button data-action="entrySets" data-d="-1">−</button><b>${e.sets}</b><button data-action="entrySets" data-d="1">+</button></div></div>
-    <button class="toggle ${e.warmup ? 'on' : ''}" data-action="entryToggle" data-f="warmup">Série d'échauffement<i></i></button>
     <button class="toggle ${e.paused ? 'on' : ''}" data-action="entryToggle" data-f="paused">En pause (sauté pour l'instant)<i></i></button>
     <button class="btn ghost sm" data-action="entrySwap">Remplacer par un autre exercice</button>
-    <button class="btn ghost sm" data-action="editEx" data-id="${esc(e.ex)}">Modifier le nom ou le type</button>
+    <button class="btn ghost sm" data-action="editEx" data-id="${esc(e.ex)}">Modifier le nom, le type ou les réglages</button>
     <button class="btn danger sm" data-action="entryDelete">Supprimer de cette séance</button>
     <button class="btn sm" data-action="closeSheet">OK</button>`);
 }
@@ -398,6 +405,7 @@ function formSheet() {
   const f = ui.form;
   openSheet(`<h2>${f.id ? 'Modifier l\'exercice' : 'Nouvel exercice'}</h2>
     <label class="field"><span>Nom</span><input type="text" id="exName" value="${esc(f.name)}" placeholder="Ex : Hack squat" autocomplete="off"></label>
+    <label class="field"><span>Réglages machine (facultatif)</span><input type="text" id="exNote" value="${esc(f.note || '')}" placeholder="Ex : siège 4 · dossier 2" autocomplete="off" maxlength="80"></label>
     <div class="field"><span>Ce que tu notes</span><div class="chips">` +
     Object.keys(TYPES).map(t => `<button class="chip ${f.type === t ? 'on' : ''}" data-action="formType" data-t="${t}">${TYPES[t]}</button>`).join('') + `</div></div>
     <button class="toggle ${f.uni ? 'on' : ''}" data-action="formUni">Exercice unilatéral (par côté)<i></i></button>
@@ -411,11 +419,11 @@ function applyPick(id) {
     const it = state.current.items[p.i];
     it.ex = id; it.sets.forEach(s => { s.done = false; delete s.kg; delete s.reps; delete s.sec; });
   } else if (p.mode === 'addToday') {
-    state.current.items.push({ ex: id, sets: buildSets({ sets: 2, warmup: false }) });
+    state.current.items.push({ ex: id, sets: buildSets({ sets: 2 }) });
   } else if (p.mode === 'swapProg') {
     state.program[p.key][p.idx].ex = id;
   } else if (p.mode === 'addProg') {
-    state.program[p.key].push({ ex: id, sets: 2, warmup: false, paused: false });
+    state.program[p.key].push({ ex: id, sets: 2, paused: false });
   }
   save(); closeSheet(); render();
 }
@@ -460,7 +468,7 @@ function restoreFile(file) {
     askConfirm(`Remplacer les données actuelles par cette sauvegarde (${data.sessions.length} séance${data.sessions.length > 1 ? 's' : ''}) ?`, 'Restaurer', () => {
       delete data.exportedAt; data.current = null;
       if (typeof data.nextIndex !== 'number') data.nextIndex = 0;
-      state = data; save(); render(); toast('Données restaurées');
+      state = migrate(data); save(); render(); toast('Données restaurées');
     });
   };
   r.readAsText(file);
@@ -508,20 +516,29 @@ const actions = {
     if (isPR(it.ex, type, s, records(it.ex))) toast('★ Nouveau record !');
   },
   itemMenu(el) {
-    const i = +el.dataset.i, it = state.current.items[i], hasW = it.sets.some(s => s.w);
-    openSheet(`<h2>${esc(exOf(it.ex).name)}</h2><div class="small mut">Pour la séance d'aujourd'hui uniquement</div>
+    const i = +el.dataset.i, it = state.current.items[i];
+    openSheet(`<h2>${esc(exOf(it.ex).name)}</h2><button class="btn ghost sm" data-action="itemNote" data-i="${i}">${exOf(it.ex).note ? 'Modifier les réglages machine' : 'Noter les réglages machine'}</button>
+      <div class="small mut" style="margin-top:14px">Pour la séance d'aujourd'hui uniquement</div>
       <button class="btn ghost sm" data-action="itemAddSet" data-i="${i}">+ Ajouter une série</button>
       <button class="btn ghost sm" data-action="itemDelSet" data-i="${i}">− Retirer la dernière série</button>
-      <button class="btn ghost sm" data-action="itemWarm" data-i="${i}">${hasW ? 'Retirer l\'échauffement' : 'Ajouter un échauffement'}</button>
       <button class="btn ghost sm" data-action="itemSwap" data-i="${i}">Remplacer par un autre exercice</button>
       <button class="btn danger sm" data-action="itemRemove" data-i="${i}">Retirer de la séance</button>
       <button class="btn sm" data-action="closeSheet">Fermer</button>`);
   },
   itemAddSet(el) { state.current.items[+el.dataset.i].sets.push({ w: false, done: false }); save(); closeSheet(); render(); },
   itemDelSet(el) { const it = state.current.items[+el.dataset.i]; if (it.sets.length > 1) it.sets.pop(); save(); closeSheet(); render(); },
-  itemWarm(el) {
-    const it = state.current.items[+el.dataset.i];
-    if (it.sets.some(s => s.w)) it.sets = it.sets.filter(s => !s.w); else it.sets.unshift({ w: true, done: false });
+  itemNote(el) {
+    const id = state.current.items[+el.dataset.i].ex, ex = exOf(id);
+    ui.noteEx = id;
+    openSheet(`<h2>Réglages machine</h2><div class="small mut">${esc(ex.name)}</div>
+      <label class="field"><span>Note affichée à chaque séance sous le nom de l'exercice</span>
+        <input type="text" id="noteText" value="${esc(ex.note || '')}" placeholder="Ex : siège 4 · dossier 2" autocomplete="off" maxlength="80"></label>
+      <button class="btn" data-action="noteSave">Enregistrer</button>
+      <button class="btn ghost sm" data-action="closeSheet">Annuler</button>`);
+  },
+  noteSave() {
+    const ex = state.exercises[ui.noteEx], v = $('#noteText').value.trim();
+    if (ex) { if (v) ex.note = v; else delete ex.note; }
     save(); closeSheet(); render();
   },
   itemSwap(el) { ui.pick = { mode: 'swapToday', i: +el.dataset.i }; pickerSheet(); },
@@ -581,20 +598,22 @@ const actions = {
   },
   addProg() { ui.pick = { mode: 'addProg', key: ui.progKey }; pickerSheet(); },
   pick(el) { applyPick(el.dataset.id); },
-  newEx() { ui.form = { id: null, name: '', type: 'charge', uni: false }; formSheet(); },
-  editEx(el) { const ex = exOf(el.dataset.id); ui.form = { id: el.dataset.id, name: ex.name, type: ex.type, uni: !!ex.uni }; formSheet(); },
-  formType(el) { ui.form.name = $('#exName').value; ui.form.type = el.dataset.t; formSheet(); },
-  formUni() { ui.form.name = $('#exName').value; ui.form.uni = !ui.form.uni; formSheet(); },
+  newEx() { ui.form = { id: null, name: '', note: '', type: 'charge', uni: false }; formSheet(); },
+  editEx(el) { const ex = exOf(el.dataset.id); ui.form = { id: el.dataset.id, name: ex.name, note: ex.note || '', type: ex.type, uni: !!ex.uni }; formSheet(); },
+  formType(el) { ui.form.name = $('#exName').value; ui.form.note = $('#exNote').value; ui.form.type = el.dataset.t; formSheet(); },
+  formUni() { ui.form.name = $('#exName').value; ui.form.note = $('#exNote').value; ui.form.uni = !ui.form.uni; formSheet(); },
   formSave() {
-    const f = ui.form, name = $('#exName').value.trim();
+    const f = ui.form, name = $('#exName').value.trim(), note = $('#exNote').value.trim();
     if (!name) return toast('Donne un nom à l\'exercice');
     if (f.id) {
       Object.assign(state.exercises[f.id], { name, type: f.type, uni: f.uni });
+      if (note) state.exercises[f.id].note = note; else delete state.exercises[f.id].note;
       ui.form = null; save(); render();
       if (ui.entry && ui.tab === 'programme') entrySheet(); else closeSheet();
     } else {
       const id = 'x' + uid();
       state.exercises[id] = { name, type: f.type, uni: f.uni };
+      if (note) state.exercises[id].note = note;
       ui.form = null; save();
       if (ui.pick) applyPick(id); else { closeSheet(); render(); }
     }
